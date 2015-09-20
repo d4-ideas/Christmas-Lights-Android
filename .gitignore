@@ -28,3 +28,11 @@ proguard/
 
 # Google Maps API
 google_maps_api.xml
+
+#from android studio
+/local.properties
+/.idea/workspace.xml
+/.idea/libraries
+.DS_Store
+/build
+/captures

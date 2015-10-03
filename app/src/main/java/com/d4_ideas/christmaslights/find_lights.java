@@ -1,13 +1,13 @@
 package com.d4_ideas.christmaslights;
 
 import android.content.Context;
+import android.content.IntentSender;
 import android.location.Criteria;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
-import android.os.AsyncTask;
 import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
 import android.util.Log;
@@ -20,44 +20,51 @@ import com.android.volley.VolleyError;
 import com.android.volley.toolbox.JsonObjectRequest;
 import com.android.volley.toolbox.StringRequest;
 import com.android.volley.toolbox.Volley;
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.location.FusedLocationProviderApi;
+import com.google.android.gms.location.LocationRequest;
+import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.SupportMapFragment;
-import com.google.android.gms.maps.model.BitmapDescriptor;
-import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.CameraPosition;
 import com.google.android.gms.maps.model.LatLng;
-import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.android.gms.maps.model.TileOverlay;
+import com.google.android.gms.maps.model.TileOverlayOptions;
 import com.google.android.gms.maps.model.VisibleRegion;
-import com.google.maps.android.geojson.GeoJsonFeature;
-import com.google.maps.android.geojson.GeoJsonLayer;
-import com.google.maps.android.geojson.GeoJsonPointStyle;
+import com.google.maps.android.heatmaps.HeatmapTileProvider;
+import com.google.maps.android.heatmaps.WeightedLatLng;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.Reader;
-import java.io.UnsupportedEncodingException;
-import java.net.HttpURLConnection;
-import java.net.URL;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
-public class find_lights extends FragmentActivity {
+public class find_lights extends FragmentActivity implements
+        GoogleApiClient.ConnectionCallbacks,
+        GoogleApiClient.OnConnectionFailedListener,
+        com.google.android.gms.location.LocationListener {
 
     private GoogleMap mMap; // Might be null if Google Play services APK is not available.
     private static final String DEBUG_TAG = "Christmas Lights";
     public Location ourLocation;
     private static final String POSTENDPOINT = "http://192.168.42.18/post.php";
     private static final String GETENDPOINT = "http://192.168.42.18/get.php";
-    JSONArray markers = null;
-    private GeoJsonLayer mLayer;
+    private List<WeightedLatLng> thePoints = new ArrayList<WeightedLatLng>();
+    private HeatmapTileProvider mProvider;
+    private TileOverlay mOverlay;
+    private GoogleApiClient mGoogleApiClient;
+    public static final long UPDATE_INTERVAL_IN_MILLISECONDS = 10000;
+    public static final long FASTEST_UPDATE_INTERVAL_IN_MILLISECONDS =
+            UPDATE_INTERVAL_IN_MILLISECONDS / 2;
+    private final static int CONNECTION_FAILURE_RESOLUTION_REQUEST = 9000;
+    private LocationRequest mLocationRequest;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -65,13 +72,74 @@ public class find_lights extends FragmentActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_find_lights);
         setUpMapIfNeeded();
+        buildGoogleApiClient();
+        mLocationRequest = LocationRequest.create()
+                .setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY)
+                .setInterval(10 * 1000)        // 10 seconds, in milliseconds
+                .setFastestInterval(1 * 1000); // 1 second, in milliseconds
     }
     @Override
     protected void onResume() {
         super.onResume();
         setUpMapIfNeeded();
+        mGoogleApiClient.connect();
     }
-    /**
+    @Override
+    protected void onStop() {
+        super.onStop();
+        LocationServices.FusedLocationApi.removeLocationUpdates(mGoogleApiClient, this);
+        if (mGoogleApiClient.isConnected()) {
+            mGoogleApiClient.disconnect();
+        }
+    }
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (mGoogleApiClient.isConnected()) {
+            LocationServices.FusedLocationApi.removeLocationUpdates(mGoogleApiClient, this);
+            mGoogleApiClient.disconnect();
+        }
+    }    @Override
+    public void onConnectionFailed(ConnectionResult connectionResult) {
+        if (connectionResult.hasResolution()) {
+            try {
+                // Start an Activity that tries to resolve the error
+                connectionResult.startResolutionForResult(this, CONNECTION_FAILURE_RESOLUTION_REQUEST);
+            } catch (IntentSender.SendIntentException e) {
+                e.printStackTrace();
+            }
+        } else {
+            Log.i(DEBUG_TAG, "Location services connection failed with code " + connectionResult.getErrorCode());
+        }
+        Log.i(DEBUG_TAG, "Connection failed: ConnectionResult.getErrorCode() = " + connectionResult.getErrorCode());
+    }
+    @Override
+    public void onConnectionSuspended(int cause) {
+        // The connection to Google Play services was lost for some reason. We call connect() to
+        // attempt to re-establish the connection.
+        Log.i(DEBUG_TAG, "Connection suspended");
+        mGoogleApiClient.connect();
+    }
+    public void onConnected(Bundle connectionHint) {
+        Log.d(DEBUG_TAG, "onConnected.");
+        // Provides a simple way of getting a device's location and is well suited for
+        // applications that do not require a fine-grained location and that do not need location
+        // updates. Gets the best and most recent location currently available, which may be null
+        // in rare cases when a location is not available.
+        ourLocation = LocationServices.FusedLocationApi.getLastLocation(mGoogleApiClient);
+        LocationServices.FusedLocationApi.requestLocationUpdates(mGoogleApiClient, mLocationRequest, this);
+        if (ourLocation != null){
+            showCurrentLocation(ourLocation);
+            Log.d(DEBUG_TAG, ourLocation.toString());
+        }
+    }
+    @Override
+    public void onLocationChanged(Location location) {
+        ourLocation = location;
+        Log.d(DEBUG_TAG, "onLocationChanged.");
+        showCurrentLocation(ourLocation);
+        getMarkers();
+    }    /**
      * Sets up the map if it is possible to do so (i.e., the Google Play services APK is correctly
      * installed) and the map has not already been instantiated.. This will ensure that we only ever
      * call {@link #setUpMap()} once when {@link #mMap} is not null.
@@ -104,7 +172,6 @@ public class find_lights extends FragmentActivity {
      */
     private void setUpMap() {
         Log.d(DEBUG_TAG, "starting setUpMap");
-        LocationManager locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
 
         mMap.setOnCameraChangeListener(new GoogleMap.OnCameraChangeListener() {
             @Override
@@ -113,35 +180,36 @@ public class find_lights extends FragmentActivity {
             }
         });
 
-        Criteria criteria = new Criteria();
-        criteria.setAccuracy(Criteria.ACCURACY_FINE);
-
-        String provider = locationManager.getBestProvider(criteria, true);
-
-        LocationListener locationListener = new LocationListener() {
-            @Override
-            public void onLocationChanged(Location ourLocation) {
-                Log.d(DEBUG_TAG, "onLocationChanged.");
-                showCurrentLocation(ourLocation);
-                getMarkers();
-            }
-
-            @Override
-            public void onStatusChanged(String provider, int status, Bundle extras) {}
-
-            @Override
-            public void onProviderEnabled(String provider) {}
-
-            @Override
-            public void onProviderDisabled(String provider) {}
-        };
-
-        locationManager.requestLocationUpdates(provider, 2000, 0, locationListener);
-
-        ourLocation = locationManager.getLastKnownLocation(provider);
-        if (ourLocation != null) {
-            showCurrentLocation(ourLocation);
-        }
+//        LocationManager locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
+//        Criteria criteria = new Criteria();
+//        criteria.setAccuracy(Criteria.ACCURACY_FINE);
+//
+//        String provider = locationManager.getBestProvider(criteria, true);
+//
+//        LocationListener locationListener = new LocationListener() {
+//            @Override
+//            public void onLocationChanged(Location ourLocation) {
+//                Log.d(DEBUG_TAG, "onLocationChanged.");
+//                showCurrentLocation(ourLocation);
+//                getMarkers();
+//            }
+//
+//            @Override
+//            public void onStatusChanged(String provider, int status, Bundle extras) {}
+//
+//            @Override
+//            public void onProviderEnabled(String provider) {}
+//
+//            @Override
+//            public void onProviderDisabled(String provider) {}
+//        };
+//
+//        locationManager.requestLocationUpdates(provider, 2000, 0, locationListener);
+//
+//        ourLocation = locationManager.getLastKnownLocation(provider);
+//        if (ourLocation != null) {
+//            showCurrentLocation(ourLocation);
+//        }
     }
     private void getMarkers() {
         Log.d(DEBUG_TAG, "getMarkers");
@@ -155,8 +223,6 @@ public class find_lights extends FragmentActivity {
             Log.d(DEBUG_TAG, "We have no location!");
         } else if (networkInfo != null && networkInfo.isConnected()) {
             // fetch data
-            Log.d(DEBUG_TAG, "Looks like the network is available.");
-            Log.d(DEBUG_TAG, visibleRegion.latLngBounds.northeast.toString());
             urlParameters =
                        "N=" + visibleRegion.latLngBounds.northeast.latitude
                     + "&W=" + visibleRegion.latLngBounds.northeast.longitude
@@ -167,10 +233,10 @@ public class find_lights extends FragmentActivity {
                     (Request.Method.GET, url, null, new Response.Listener<JSONObject>() {
                         @Override
                         public void onResponse(JSONObject response) {
-                            Log.d(DEBUG_TAG, response.toString());
-                            mLayer = new GeoJsonLayer(getMap(), response);
-                            decorateMarkers();
-                            mLayer.addLayerToMap();
+                            thePoints=convertJson(response);
+                            mProvider=new HeatmapTileProvider.Builder().weightedData(thePoints).build();
+                            mOverlay = mMap.addTileOverlay(new TileOverlayOptions().tileProvider(mProvider));
+                            mOverlay.clearTileCache();
                         }
                     }, new Response.ErrorListener() {
 
@@ -253,26 +319,35 @@ public class find_lights extends FragmentActivity {
         setUpMapIfNeeded();
         return mMap;
     }
-    private void decorateMarkers() {
-        // Iterate over all the features stored in the layer
-        for (GeoJsonFeature feature : mLayer.getFeatures()) {
-            // Check if the magnitude property exists
-            if (feature.hasProperty("votes")) {
-                float votes = Float.parseFloat(feature.getProperty("votes"));
-
-                // Get the icon for the feature
-                BitmapDescriptor pointIcon = BitmapDescriptorFactory.defaultMarker();
-
-                // Create a new point style
-                GeoJsonPointStyle pointStyle = new GeoJsonPointStyle();
-
-                // Set options for the point style
-                pointStyle.setIcon(pointIcon);
-                pointStyle.setAlpha(votes);
-
-                // Assign the point style to the feature
-                feature.setPointStyle(pointStyle);
+    private List<WeightedLatLng> convertJson (JSONObject geoJsonObject){
+        JSONArray intermediateObject;
+        double intermediateIntensity;
+        List<WeightedLatLng> ourPoints = new ArrayList<WeightedLatLng>();
+        JSONArray array = null;
+        try {
+            array = geoJsonObject.getJSONArray("features");
+            for (int i = 0; i < array.length(); i++){
+                intermediateObject = array.getJSONObject(i).getJSONObject("geometry").getJSONArray("coordinates");
+                intermediateIntensity=array
+                        .getJSONObject(i)
+                        .getJSONObject("properties")
+                        .getDouble("votes");
+                ourPoints.add(
+                        new WeightedLatLng(
+                                new LatLng(intermediateObject.getDouble(1), intermediateObject.getDouble(0)),
+                                intermediateIntensity));
             }
+        } catch (JSONException e) {
+            e.printStackTrace();
         }
+        return ourPoints;
+    }
+
+    protected synchronized void buildGoogleApiClient() {
+        mGoogleApiClient = new GoogleApiClient.Builder(this)
+                .addConnectionCallbacks(this)
+                .addOnConnectionFailedListener(this)
+                .addApi(LocationServices.API)
+                .build();
     }
 }

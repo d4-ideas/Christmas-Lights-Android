@@ -2,10 +2,7 @@ package com.d4_ideas.christmaslights;
 
 import android.content.Context;
 import android.content.IntentSender;
-import android.location.Criteria;
 import android.location.Location;
-import android.location.LocationListener;
-import android.location.LocationManager;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.support.v4.app.FragmentActivity;
@@ -22,12 +19,12 @@ import com.android.volley.toolbox.StringRequest;
 import com.android.volley.toolbox.Volley;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
-import com.google.android.gms.location.FusedLocationProviderApi;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.maps.UiSettings;
 import com.google.android.gms.maps.model.CameraPosition;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
@@ -52,10 +49,11 @@ public class find_lights extends FragmentActivity implements
         com.google.android.gms.location.LocationListener {
 
     private GoogleMap mMap; // Might be null if Google Play services APK is not available.
+    private UiSettings mUiSettings;
     private static final String DEBUG_TAG = "Christmas Lights";
     public Location ourLocation;
-    private static final String POSTENDPOINT = "http://192.168.42.18/post.php";
-    private static final String GETENDPOINT = "http://192.168.42.18/get.php";
+    private static final String POSTENDPOINT = "http://192.168.42.18:3000";
+    private static final String GETENDPOINT = "http://192.168.42.18:3000/points";
     private List<WeightedLatLng> thePoints = new ArrayList<WeightedLatLng>();
     private HeatmapTileProvider mProvider;
     private TileOverlay mOverlay;
@@ -87,8 +85,8 @@ public class find_lights extends FragmentActivity implements
     @Override
     protected void onStop() {
         super.onStop();
-        LocationServices.FusedLocationApi.removeLocationUpdates(mGoogleApiClient, this);
         if (mGoogleApiClient.isConnected()) {
+            LocationServices.FusedLocationApi.removeLocationUpdates(mGoogleApiClient, this);
             mGoogleApiClient.disconnect();
         }
     }
@@ -172,7 +170,11 @@ public class find_lights extends FragmentActivity implements
      */
     private void setUpMap() {
         Log.d(DEBUG_TAG, "starting setUpMap");
-
+        mMap.setMyLocationEnabled(true);
+        mMap.setPadding(0,0,0,160);
+        mUiSettings = mMap.getUiSettings();
+        mUiSettings.setCompassEnabled(true);
+        mUiSettings.setZoomControlsEnabled(true);
         mMap.setOnCameraChangeListener(new GoogleMap.OnCameraChangeListener() {
             @Override
             public void onCameraChange(CameraPosition cameraPosition) {
@@ -180,36 +182,6 @@ public class find_lights extends FragmentActivity implements
             }
         });
 
-//        LocationManager locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
-//        Criteria criteria = new Criteria();
-//        criteria.setAccuracy(Criteria.ACCURACY_FINE);
-//
-//        String provider = locationManager.getBestProvider(criteria, true);
-//
-//        LocationListener locationListener = new LocationListener() {
-//            @Override
-//            public void onLocationChanged(Location ourLocation) {
-//                Log.d(DEBUG_TAG, "onLocationChanged.");
-//                showCurrentLocation(ourLocation);
-//                getMarkers();
-//            }
-//
-//            @Override
-//            public void onStatusChanged(String provider, int status, Bundle extras) {}
-//
-//            @Override
-//            public void onProviderEnabled(String provider) {}
-//
-//            @Override
-//            public void onProviderDisabled(String provider) {}
-//        };
-//
-//        locationManager.requestLocationUpdates(provider, 2000, 0, locationListener);
-//
-//        ourLocation = locationManager.getLastKnownLocation(provider);
-//        if (ourLocation != null) {
-//            showCurrentLocation(ourLocation);
-//        }
     }
     private void getMarkers() {
         Log.d(DEBUG_TAG, "getMarkers");

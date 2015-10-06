@@ -11,31 +11,33 @@
               class="com.google.android.gms.maps.SupportMapFragment"
               tools:layout="@layout/activity_find_lights"/>
 
-    <RelativeLayout
+    <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:background="#80000000"
-        android:padding="4dp"
-        android:layout_gravity="center_horizontal|bottom">
-        <Button
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Up Vote"
-            android:id="@+id/button"
-            android:layout_alignParentTop="true"
-            android:layout_alignParentLeft="true"
-            android:layout_alignParentStart="true"
-            android:onClick="upVote"/>
+        android:layout_height="match_parent"
+        android:layout_alignParentEnd="true"
+        android:layout_alignParentRight="true"
+        android:layout_alignParentTop="true"
+        android:id="@+id/frameLayout">
 
-        <Button
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Down Vote"
-            android:id="@+id/button2"
-            android:layout_alignParentTop="true"
-            android:layout_toRightOf="@+id/button"
-            android:layout_toEndOf="@+id/button"
-            android:onClick="downVote"/>
-    </RelativeLayout>
+        <ImageButton
+            android:layout_margin="15dp"
+            android:layout_width="70dp"
+            android:layout_height="70dp"
+            android:src="@drawable/ic_action_thumbsup"
+            android:background="@drawable/circle"
+            android:id="@+id/imageButton"
+            android:layout_gravity="right|bottom"
+            android:onClick="upVote" />
+
+        <ImageButton
+            android:layout_margin="15dp"
+            android:layout_width="70dp"
+            android:layout_height="70dp"
+            android:src="@drawable/ic_action_thumbsdown"
+            android:background="@drawable/circle"
+            android:id="@+id/imageButton"
+            android:layout_gravity="left|bottom"
+            android:onClick="downVote" />
+
+    </FrameLayout>
 </FrameLayout>

@@ -5,6 +5,7 @@ import android.content.IntentSender;
 import android.location.Location;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
+import android.os.Build;
 import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
 import android.util.Log;
@@ -39,6 +40,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -52,9 +54,10 @@ public class find_lights extends FragmentActivity implements
     private UiSettings mUiSettings;
     private static final String DEBUG_TAG = "Christmas Lights";
     public Location ourLocation;
-    private static final String POSTENDPOINT = "http://192.168.42.18:3000";
-    private static final String GETENDPOINT = "http://192.168.42.18:3000/points";
+    private static final String POSTENDPOINT = "http://192.168.1.3:3000/points";
+    private static final String GETENDPOINT = "http://192.168.1.3:3000/points";
     private List<WeightedLatLng> thePoints = new ArrayList<WeightedLatLng>();
+    private List<WeightedLatLng> lastPoints = new ArrayList<WeightedLatLng>();
     private HeatmapTileProvider mProvider;
     private TileOverlay mOverlay;
     private GoogleApiClient mGoogleApiClient;
@@ -63,6 +66,11 @@ public class find_lights extends FragmentActivity implements
             UPDATE_INTERVAL_IN_MILLISECONDS / 2;
     private final static int CONNECTION_FAILURE_RESOLUTION_REQUEST = 9000;
     private LocationRequest mLocationRequest;
+    private String id = Build.SERIAL;
+    // don't request markers more often than delay milliseconds
+    private int delay = 60000;
+    private long lastUpdate = 0;
+    private VisibleRegion lastVisible;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -129,6 +137,7 @@ public class find_lights extends FragmentActivity implements
         if (ourLocation != null){
             showCurrentLocation(ourLocation);
             Log.d(DEBUG_TAG, ourLocation.toString());
+            mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(ourLocation.getLatitude(), ourLocation.getLongitude()), 18));
         }
     }
     @Override
@@ -184,11 +193,22 @@ public class find_lights extends FragmentActivity implements
 
     }
     private void getMarkers() {
-        Log.d(DEBUG_TAG, "getMarkers");
         String urlParameters;
         String url;
         final VisibleRegion visibleRegion=mMap.getProjection().getVisibleRegion();
-
+        if (
+                (System.currentTimeMillis() < lastUpdate + delay)
+            &&
+                (visibleRegion.equals(lastVisible))
+            ){
+            Log.d(DEBUG_TAG,"Too early to get markers");
+            return;
+        }
+        else {
+            Log.d(DEBUG_TAG,"Getting a new set of markers");
+        }
+        lastUpdate = System.currentTimeMillis();
+        lastVisible = visibleRegion;
         ConnectivityManager connMgr = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
         NetworkInfo networkInfo = connMgr.getActiveNetworkInfo();
         if (null == ourLocation){
@@ -206,9 +226,12 @@ public class find_lights extends FragmentActivity implements
                         @Override
                         public void onResponse(JSONObject response) {
                             thePoints=convertJson(response);
-                            mProvider=new HeatmapTileProvider.Builder().weightedData(thePoints).build();
-                            mOverlay = mMap.addTileOverlay(new TileOverlayOptions().tileProvider(mProvider));
-                            mOverlay.clearTileCache();
+                            if (thePoints.equals(lastPoints)){
+                                mProvider=new HeatmapTileProvider.Builder().weightedData(thePoints).build();
+                                mOverlay = mMap.addTileOverlay(new TileOverlayOptions().tileProvider(mProvider));
+                                mOverlay.clearTileCache();
+                                lastPoints = thePoints;
+                            }
                         }
                     }, new Response.ErrorListener() {
 
@@ -264,6 +287,7 @@ public class find_lights extends FragmentActivity implements
                     params.put("lat", String.valueOf(ourLocation.getLatitude()));
                     params.put("long", String.valueOf(ourLocation.getLongitude()));
                     params.put("vote", theVote);
+                    params.put("id", id);
                     return params;
                 };
             };
@@ -285,7 +309,7 @@ public class find_lights extends FragmentActivity implements
                         .title("I'm here!")
         );
 
-        mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(currentPosition, 18));
+//        mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(currentPosition, 18));
     }
     protected GoogleMap getMap() {
         setUpMapIfNeeded();

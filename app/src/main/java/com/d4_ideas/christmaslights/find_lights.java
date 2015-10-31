@@ -5,6 +5,7 @@ import android.content.IntentSender;
 import android.location.Location;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
+import android.net.Uri;
 import android.os.Build;
 import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
@@ -40,7 +41,6 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
-import java.util.Calendar;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -54,8 +54,9 @@ public class find_lights extends FragmentActivity implements
     private UiSettings mUiSettings;
     private static final String DEBUG_TAG = "Christmas Lights";
     public Location ourLocation;
-    private static final String POSTENDPOINT = "http://192.168.1.3:3000/points";
-    private static final String GETENDPOINT = "http://192.168.1.3:3000/points";
+    private static final String AUTHORITY = "http://192.168.42.18:3000";
+    private static final String POSTPATH = "points";
+    private static final String GETPATH = "points";
     private List<WeightedLatLng> thePoints = new ArrayList<WeightedLatLng>();
     private List<WeightedLatLng> lastPoints = new ArrayList<WeightedLatLng>();
     private HeatmapTileProvider mProvider;
@@ -193,8 +194,8 @@ public class find_lights extends FragmentActivity implements
 
     }
     private void getMarkers() {
-        String urlParameters;
-        String url;
+        Uri.Builder builder = new Uri.Builder();
+        String urlstring = "";
         final VisibleRegion visibleRegion=mMap.getProjection().getVisibleRegion();
         if (
                 (System.currentTimeMillis() < lastUpdate + delay)
@@ -215,18 +216,25 @@ public class find_lights extends FragmentActivity implements
             Log.d(DEBUG_TAG, "We have no location!");
         } else if (networkInfo != null && networkInfo.isConnected()) {
             // fetch data
-            urlParameters =
-                       "N=" + visibleRegion.latLngBounds.northeast.latitude
-                    + "&W=" + visibleRegion.latLngBounds.northeast.longitude
-                    + "&S=" + visibleRegion.latLngBounds.southwest.latitude
-                    + "&E=" + visibleRegion.latLngBounds.southwest.longitude;
-            url = GETENDPOINT + "?" + urlParameters;
+            builder .appendQueryParameter("p[0][0]", String.valueOf(visibleRegion.farLeft.longitude))
+                    .appendQueryParameter("p[0][1]", String.valueOf(visibleRegion.farLeft.latitude))
+                    .appendQueryParameter("p[1][0]", String.valueOf(visibleRegion.farRight.longitude))
+                    .appendQueryParameter("p[1][1]", String.valueOf(visibleRegion.farRight.latitude))
+                    .appendQueryParameter("p[2][0]", String.valueOf(visibleRegion.nearRight.longitude))
+                    .appendQueryParameter("p[2][1]", String.valueOf(visibleRegion.nearRight.latitude))
+                    .appendQueryParameter("p[3][0]", String.valueOf(visibleRegion.nearLeft.longitude))
+                    .appendQueryParameter("p[3][1]", String.valueOf(visibleRegion.nearLeft.latitude))
+                    .appendQueryParameter("p[4][0]", String.valueOf(visibleRegion.farLeft.longitude))
+                    .appendQueryParameter("p[4][1]", String.valueOf(visibleRegion.farLeft.latitude));
+            urlstring = AUTHORITY + "/" + GETPATH + builder.toString();
+
+            Log.d(DEBUG_TAG,urlstring);
             JsonObjectRequest jsonRequest = new JsonObjectRequest
-                    (Request.Method.GET, url, null, new Response.Listener<JSONObject>() {
+                    (Request.Method.GET, urlstring, null, new Response.Listener<JSONObject>() {
                         @Override
                         public void onResponse(JSONObject response) {
                             thePoints=convertJson(response);
-                            if (thePoints.equals(lastPoints)){
+                            if (!thePoints.equals(lastPoints)){
                                 mProvider=new HeatmapTileProvider.Builder().weightedData(thePoints).build();
                                 mOverlay = mMap.addTileOverlay(new TileOverlayOptions().tileProvider(mProvider));
                                 mOverlay.clearTileCache();
@@ -268,7 +276,7 @@ public class find_lights extends FragmentActivity implements
             RequestQueue queue = Volley.newRequestQueue(this);
 
             // Request a string response from the provided URL.
-            StringRequest stringRequest = new StringRequest(Request.Method.POST, POSTENDPOINT,
+            StringRequest stringRequest = new StringRequest(Request.Method.POST, AUTHORITY,
                     new Response.Listener<String>() {
                         @Override
                         public void onResponse(String response) {
@@ -285,13 +293,15 @@ public class find_lights extends FragmentActivity implements
                 protected Map<String, String> getParams() throws com.android.volley.AuthFailureError {
                     Map<String, String> params = new HashMap<String, String>();
                     params.put("lat", String.valueOf(ourLocation.getLatitude()));
-                    params.put("long", String.valueOf(ourLocation.getLongitude()));
+                    params.put("lon", String.valueOf(ourLocation.getLongitude()));
                     params.put("vote", theVote);
                     params.put("id", id);
+                    params.put("type", "android");
                     return params;
                 };
             };
             // Add the request to the RequestQueue.
+            Log.d(DEBUG_TAG, stringRequest.toString());
             queue.add(stringRequest);
         } else {
             Log.d(DEBUG_TAG, "Sorry, no network connection.");
